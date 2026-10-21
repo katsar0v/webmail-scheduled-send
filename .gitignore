@@ -1,0 +1,11 @@
+# Unredacted server notes and test output (never commit)
+/local/
+*.log
+
+# Dependencies
+/vendor/
+/node_modules/
+
+# Local configuration
+config.inc.php
+.env
