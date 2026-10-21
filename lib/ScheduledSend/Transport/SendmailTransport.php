@@ -2,6 +2,8 @@
 
 namespace ScheduledSend\Transport;
 
+use ScheduledSend\Process;
+
 /**
  * Delivers through the local sendmail binary. On Plesk this is a wrapper that
  * runs the mail handlers and adds the DKIM signature.
@@ -17,17 +19,26 @@ class SendmailTransport implements TransportInterface
     /** @var string[] */
     private $command;
 
+    /** @var int */
+    private $timeout;
+
     /**
      * @param string[] $command Program and fixed arguments, e.g. ['/usr/sbin/sendmail']
      *                          or ['/usr/bin/sudo', '-n', '-u', 'popuser', '/usr/sbin/sendmail']
+     * @param int      $timeout Seconds sendmail gets to take over the message
      */
-    public function __construct(array $command)
+    public function __construct(array $command, int $timeout = 120)
     {
         if (empty($command)) {
             throw new \InvalidArgumentException('Empty sendmail command');
         }
 
+        if ($timeout < 1) {
+            throw new \InvalidArgumentException('Timeout must be at least 1 second');
+        }
+
         $this->command = array_values($command);
+        $this->timeout = $timeout;
     }
 
     public function submit(string $from, array $recipients, string $message): void
@@ -37,50 +48,37 @@ class SendmailTransport implements TransportInterface
         // -i: a line with a single dot does not end the message
         $argv = array_merge($this->command, ['-i', '-f', $from, '--'], array_values($recipients));
 
-        $process = proc_open($argv, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-
-        if (!is_resource($process)) {
+        try {
+            $result = Process::run($argv, $message, $this->timeout);
+        }
+        catch (\RuntimeException $e) {
             throw new TransportException('Could not start ' . $this->command[0], true);
         }
 
-        if (!self::writeAll($pipes[0], $message)) {
-            // Kill sendmail before it sees end-of-input, so it cannot queue a truncated message
-            proc_terminate($process, 9);
-            fclose($pipes[0]);
-            fclose($pipes[1]);
-            fclose($pipes[2]);
-            proc_close($process);
+        $detail = trim(preg_replace('/\s+/', ' ', $result->output()));
+        $detail = $detail !== '' ? ": $detail" : '';
 
-            throw new TransportException('Could not write the message to sendmail', true);
+        // Process kills the child before it sees end-of-input, so a truncated message is never queued
+        if (!$result->inputSent()) {
+            throw new TransportException(
+                ($result->timedOut() ? 'Timed out writing the message to sendmail' : 'Could not write the message to sendmail') . $detail,
+                true
+            );
         }
 
-        fclose($pipes[0]);
+        // sendmail has the whole message and may have queued it, so it must not be sent again
+        if ($result->timedOut()) {
+            throw new TransportException("sendmail did not finish within {$this->timeout} seconds$detail", false, true);
+        }
 
-        $output = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
+        $code = $result->exitCode();
 
-        $code = proc_close($process);
+        if ($code === null) {
+            throw new TransportException("sendmail was killed by a signal$detail", false, true);
+        }
 
         if ($code !== 0) {
-            $detail = trim(preg_replace('/\s+/', ' ', $output));
-            throw new TransportException("sendmail exited with code $code" . ($detail ? ": $detail" : ''), $code === self::EX_TEMPFAIL);
+            throw new TransportException("sendmail exited with code $code$detail", $code === self::EX_TEMPFAIL);
         }
-    }
-
-    /**
-     * @param resource $pipe
-     */
-    private static function writeAll($pipe, string $data): bool
-    {
-        for ($offset = 0, $length = strlen($data); $offset < $length; $offset += $written) {
-            $written = @fwrite($pipe, substr($data, $offset, 65536));
-
-            if ($written === false || $written === 0) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

@@ -171,17 +171,60 @@ class WorkerTest extends TestCase
         $this->assertSame([], $this->transport->sent);
     }
 
-    public function testSentCopyFailureDoesNotResend(): void
+    public function testSentCopyFailureKeepsContentAndRetriesWithoutResending(): void
     {
-        $id = $this->addJob();
+        $id = $this->addJob(['flag_mailbox' => 'INBOX', 'flag_message_id' => '<0@example.test>', 'flag_name' => StoreInterface::ANSWERED]);
         $this->store->failSave = true;
 
         $this->worker()->run($this->time('2026-10-22 06:00:00'));
 
         $job = $this->queue->jobs[$id];
-        $this->assertSame(QueueInterface::DONE, $job['status']);
+        $this->assertSame(QueueInterface::ACCEPTED, $job['status']);
+        $this->assertSame("Hello\r\n", $job['body'], 'content is kept until the Sent copy exists');
         $this->assertStringContainsString('mailbox full', $job['last_error']);
+        $this->assertNull($job['flag_name'], 'the flag step succeeded and is not repeated');
+        $this->assertCount(1, $this->store->flags);
+
+        // Mailbox has room again; the next run after the retry delay files the copy
+        $this->store->failSave = false;
+        $this->worker()->run($this->time('2026-10-22 06:06:00'));
+
+        $job = $this->queue->jobs[$id];
+        $this->assertSame(QueueInterface::DONE, $job['status']);
+        $this->assertSame('', $job['body']);
+        $this->assertCount(1, $this->store->saved);
+        $this->assertCount(1, $this->store->flags);
+        $this->assertCount(1, $this->transport->sent, 'never resent');
+        // The copy has the original send time, not the time of the retry
+        $this->assertStringStartsWith("Date: Thu, 22 Oct 2026 08:00:00 +0200\r\n", $this->store->saved[0]['message']);
+    }
+
+    public function testGivesUpOnSentCopyAfterTimeoutButKeepsContent(): void
+    {
+        $id = $this->addJob();
+        $this->store->failSave = true;
+
+        $this->worker()->run($this->time('2026-10-22 06:00:00'));
+        $this->worker()->run($this->time('2026-10-23 06:00:01'));
+
+        $job = $this->queue->jobs[$id];
+        $this->assertSame(QueueInterface::DONE, $job['status']);
+        $this->assertStringContainsString('gave up', $job['last_error']);
+        $this->assertSame("Hello\r\n", $job['body'], 'kept for manual recovery until purged');
         $this->assertCount(1, $this->transport->sent);
+    }
+
+    public function testUncertainSubmissionIsNeverRetried(): void
+    {
+        $id = $this->addJob();
+
+        $this->transport->fail = new TransportException('sendmail timed out after reading the message', false, true);
+        $stats = $this->worker()->run($this->time('2026-10-22 06:00:00'));
+        $this->worker()->run($this->time('2026-10-22 07:00:00'));
+
+        $this->assertSame(1, $stats['uncertain']);
+        $this->assertSame(QueueInterface::UNCERTAIN, $this->queue->jobs[$id]['status']);
+        $this->assertSame([], $this->transport->sent);
     }
 
     public function testFinishesAcceptedJobsLeftBehind(): void

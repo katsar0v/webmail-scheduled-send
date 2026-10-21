@@ -29,6 +29,9 @@ interface QueueInterface
     public const FAILED     = 'failed';
     public const UNCERTAIN  = 'uncertain';
 
+    /** Statuses in which a job still stores its message content. */
+    public const HOLDING_CONTENT = [self::PENDING, self::SUBMITTING, self::ACCEPTED, self::RESTORING, self::FAILED, self::UNCERTAIN];
+
     /**
      * @param array $job Column => value
      *
@@ -45,6 +48,20 @@ interface QueueInterface
      * Jobs of one user without message content, newest send time first.
      */
     public function listForUser(int $userId): array;
+
+    /**
+     * Number of jobs and total bytes a user currently stores (jobs that still hold content).
+     *
+     * @return array{count: int, bytes: int}
+     */
+    public function usage(int $userId): array;
+
+    /**
+     * A job of this user with this Message-ID in one of the given statuses, if any.
+     *
+     * @param string[] $statuses
+     */
+    public function findByMessageId(int $userId, string $messageId, array $statuses): ?array;
 
     /**
      * Atomically move a job from one status to another.

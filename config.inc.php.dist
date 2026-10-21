@@ -47,6 +47,10 @@ $config['scheduled_send_max_horizon'] = 365 * 24 * 3600;
 // in the database, so keep this below MySQL's max_allowed_packet.
 $config['scheduled_send_max_size'] = 10 * 1024 * 1024;
 
+// Per-user limits for messages waiting in the queue (0 = no limit)
+$config['scheduled_send_max_pending'] = 50;
+$config['scheduled_send_max_pending_bytes'] = 100 * 1024 * 1024;
+
 // Retries after temporary delivery errors, and the base delay between them (seconds)
 $config['scheduled_send_max_attempts'] = 5;
 $config['scheduled_send_retry_delay'] = 300;

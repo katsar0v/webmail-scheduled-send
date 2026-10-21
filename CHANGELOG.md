@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.1 – 2026-10-21
+
+Fixes from the first code review, plus a Bulgarian translation.
+
+- **Sent copy survives failures.** If the Sent copy or the Answered/Forwarded flag fails after delivery (e.g. a full mailbox), the job keeps its content and the worker retries for up to 24 hours. Each step runs only once, and the message is never sent again.
+- **Per-user limits:** at most 50 waiting messages and 100 MB per user (`scheduled_send_max_pending`, `scheduled_send_max_pending_bytes`). Scheduling also updates Roundcube's `sendmail_delay` bookkeeping.
+- **Plugin order:** the message is captured after all other plugins' `message_before_send` handlers, so headers they add or a rejection they make apply to scheduled messages too.
+- **Encryption (Mailvelope, Enigma):** these submit the form later, after encryption or a key password prompt. Such a submission now stays scheduled instead of going out immediately. A plain "Send" still clears any earlier schedule.
+- **No duplicates:** a retried scheduling request (e.g. after a timeout) does not queue the same message twice.
+- **Stuck "Edit":** an "Edit" interrupted mid-way can be retried after 5 minutes without creating a second draft.
+- **Replies and forwards:** an edited scheduled reply or forward keeps Roundcube's `X-Draft-Info`, so the original is still flagged when it goes out.
+- `no_save_sent_messages` is respected.
+- **sendmail and doveadm** run with non-blocking I/O and a deadline (120 s and 60 s). A sendmail that times out after reading the whole message makes the job "uncertain" instead of retrying it.
+- **Development SMTP transport:** a lost reply after DATA counts as "uncertain".
+- **Time zones:** browser names like `Europe/Kiev` or `Asia/Calcutta` are accepted and stored under their current name. In the repeated hour when daylight saving time ends, the first occurrence is used, as documented.
+- Bulgarian translation. The UI follows each user's webmail language, with English as the fallback.
+
 ## 0.1.0 – 2026-10-21
 
 First version.

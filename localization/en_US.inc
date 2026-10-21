@@ -37,6 +37,7 @@ $messages['datetoofar'] = 'The send time is too far in the future.';
 $messages['sendernotallowed'] = 'Scheduled messages can only be sent from your own address.';
 $messages['norecipients'] = 'Please add at least one recipient.';
 $messages['messagetoolarge'] = 'The message is too large to be scheduled.';
+$messages['quotaexceeded'] = 'You have too many scheduled messages. Please wait until some are sent, or cancel some.';
 $messages['cancelled'] = 'Scheduled message cancelled.';
 $messages['restored'] = 'The message was moved back to Drafts.';
 $messages['restorefailed'] = 'The message could not be saved to Drafts.';

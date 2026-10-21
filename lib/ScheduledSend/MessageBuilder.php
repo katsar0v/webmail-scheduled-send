@@ -27,6 +27,23 @@ class MessageBuilder
     }
 
     /**
+     * Message as put back into Drafts. $draftInfo is Roundcube's X-Draft-Info
+     * value, which lets a reopened reply/forward still flag the original.
+     */
+    public static function forDraft(string $headers, string $body, string $date, ?string $bcc, ?string $draftInfo): string
+    {
+        $message = self::build($headers, $body, $date, $bcc);
+
+        if ($draftInfo === null || $draftInfo === '') {
+            return $message;
+        }
+
+        $eol = strpos($headers, "\r\n") !== false ? "\r\n" : "\n";
+
+        return 'X-Draft-Info: ' . $draftInfo . $eol . $message;
+    }
+
+    /**
      * RFC 2822 date in the user's time zone.
      */
     public static function date(\DateTimeImmutable $time, string $timezone): string

@@ -16,7 +16,7 @@ class Queue implements QueueInterface
 
     private const LIST_COLUMNS = [
         'id', 'status', 'send_at', 'timezone', 'recipients', 'subject', 'size',
-        'attempts', 'last_error', 'created_at', 'submitted_at',
+        'attempts', 'last_error', 'created_at', 'updated_at', 'submitted_at',
     ];
 
     /** Statuses that purge() may delete. */
@@ -82,6 +82,26 @@ class Queue implements QueueInterface
         }
 
         return $rows;
+    }
+
+    public function usage(int $userId): array
+    {
+        $sql = sprintf('SELECT COUNT(*) AS `count`, COALESCE(SUM(`size`), 0) AS `bytes` FROM %s WHERE `user_id` = ? AND `status` IN (%s)',
+            $this->table, $this->db->array2list(self::HOLDING_CONTENT));
+
+        $row = $this->db->fetch_assoc($this->query($sql, [$userId]));
+
+        return ['count' => (int) $row['count'], 'bytes' => (int) $row['bytes']];
+    }
+
+    public function findByMessageId(int $userId, string $messageId, array $statuses): ?array
+    {
+        $sql = sprintf('SELECT * FROM %s WHERE `user_id` = ? AND `message_id` = ? AND `status` IN (%s) ORDER BY `id` DESC',
+            $this->table, $this->db->array2list($statuses));
+
+        $row = $this->db->fetch_assoc($this->db->limitquery($sql, 0, 1, $userId, $messageId));
+
+        return $row ?: null;
     }
 
     public function transition(int $id, string $from, string $to, array $set = [], ?int $userId = null): bool

@@ -48,6 +48,13 @@ function scheduled_send_compose_init()
     // and asks whether to discard the unsaved message.
     rcmail.env.compose_commands.push('plugin.scheduled_send');
 
+    // A plain "Send" must never carry a schedule left over from an earlier attempt
+    rcmail.addEventListener('beforesend', function(props) {
+        if (!(props && props.scheduled_send)) {
+            scheduled_send_clear();
+        }
+    });
+
     var label = scheduled_send_label('sendlater'),
         button = $('<button type="button" class="btn btn-secondary scheduled-send">')
             .text(label)
@@ -135,22 +142,23 @@ function scheduled_send_dialog()
     }, {button: 'scheduled_send.schedule', button_class: 'send'});
 }
 
+function scheduled_send_clear()
+{
+    $('input[name="_schedule_at"], input[name="_schedule_tz"]', rcmail.gui_objects.messageform).remove();
+}
+
 function scheduled_send_submit(value, tz)
 {
-    var form = $(rcmail.gui_objects.messageform),
-        fields = $('<input type="hidden" name="_schedule_at">').val(value)
-            .add($('<input type="hidden" name="_schedule_tz">').val(tz));
+    scheduled_send_clear();
 
-    form.append(fields);
+    // The fields stay in the form until the compose screen closes or a plain "Send"
+    // removes them: Mailvelope and Enigma submit the form later (after encryption
+    // or a key password prompt), and that submission must still be scheduled.
+    $(rcmail.gui_objects.messageform)
+        .append($('<input type="hidden" name="_schedule_at">').val(value))
+        .append($('<input type="hidden" name="_schedule_tz">').val(tz));
 
-    // The browser reads the form fields synchronously inside form.submit(),
-    // so a later plain "Send" is never turned into a scheduled one.
-    try {
-        rcmail.command('send', {nocheck: true});
-    }
-    finally {
-        fields.remove();
-    }
+    rcmail.command('send', {nocheck: true, scheduled_send: true});
 }
 
 function scheduled_send_list_init()

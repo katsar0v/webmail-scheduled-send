@@ -37,6 +37,7 @@ $messages['datetoofar'] = 'Die Sendezeit liegt zu weit in der Zukunft.';
 $messages['sendernotallowed'] = 'Geplante E-Mails können nur von der eigenen Adresse gesendet werden.';
 $messages['norecipients'] = 'Bitte mindestens einen Empfänger angeben.';
 $messages['messagetoolarge'] = 'Die E-Mail ist zu groß, um sie zu planen.';
+$messages['quotaexceeded'] = 'Sie haben zu viele geplante E-Mails. Bitte warten Sie, bis einige gesendet sind, oder brechen Sie welche ab.';
 $messages['cancelled'] = 'Geplante E-Mail abgebrochen.';
 $messages['restored'] = 'Die E-Mail liegt wieder in den Entwürfen.';
 $messages['restorefailed'] = 'Die E-Mail konnte nicht in den Entwürfen gespeichert werden.';

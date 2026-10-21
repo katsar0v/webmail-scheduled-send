@@ -2,7 +2,7 @@
 
 "Send later" for Roundcube webmail on Plesk: pick a date and time in the compose window, and the message goes out at that time, Gmail-style.
 
-**Version 0.1.0** · Roundcube 1.6 (Elastic skin) · PHP 7.4+ · MySQL/MariaDB · [Changelog](CHANGELOG.md)
+**Version 0.1.1** · Roundcube 1.6 (Elastic skin) · PHP 7.4+ · MySQL/MariaDB · [Changelog](CHANGELOG.md)
 
 ## How it works
 
@@ -24,7 +24,8 @@ This plugin does neither:
 - **No stored passwords.** `sendmail` and `doveadm` don't need the user's credentials.
 - **No web-reachable worker.** Delivery runs from cron or a systemd timer only.
 - **Sender check.** The envelope sender and From must be the user's login address (or, if configured, one of their identities). The plugin checks this when the message is scheduled and again right before sending. Neither Plesk's sendmail wrapper nor its default Postfix setup checks the sender.
-- **At most once.** If the worker dies while handing a message to the MTA, the job is marked *uncertain* and is never resent automatically. Temporary errors are retried with a growing delay.
+- **At most once.** If the worker dies while handing a message to the MTA, or sendmail stops responding after reading it, the job is marked *uncertain* and is never resent automatically. Temporary errors are retried with a growing delay. A failed Sent copy is retried separately without resending.
+- **Limits per user.** Each user can have at most 50 waiting messages and 100 MB in the queue (configurable), so one mailbox cannot fill the shared database.
 
 ## Installation
 
@@ -70,7 +71,7 @@ roundcube_sysuser ALL=(popuser) NOPASSWD: /usr/sbin/sendmail, /usr/bin/doveadm s
 
 ### 4. Enable the plugin
 
-Add `scheduled_send` to `$config['plugins']` in Roundcube's configuration. On Plesk, use `/usr/share/psa-roundcube/config/config.local.php`, which survives updates.
+Add `scheduled_send` to `$config['plugins']` in Roundcube's configuration. On Plesk, use `/usr/share/psa-roundcube/config/config.local.php`, which survives updates. Older Plesk installations may still have a `config.inc.php` that does not include `config.local.php`. Compare it with `config.inc.php.dpkg-dist` and add the include block if it is missing. List all plugins you want, because the list replaces Plesk's default one.
 
 ### 5. Worker
 
@@ -87,9 +88,10 @@ The worker logs to Roundcube's log as `scheduled_send`. Only one worker runs at 
 - MySQL/MariaDB only.
 - Elastic skin only.
 - No delivery status notification (DSN) requests.
-- The whole message is stored in the database. The default size limit is 10 MB (`scheduled_send_max_size`).
+- The whole message is stored in the database. The default size limit is 10 MB (`scheduled_send_max_size`). The per-user limits are checked before each new message, so two simultaneous requests can exceed them by one message.
 - Replies and forwards of a single message get the Answered/Forwarded flag. Forwarding several messages at once does not.
 - An ambiguous local time (the repeated hour when daylight saving time ends) uses the first occurrence.
+- The UI is available in English, German and Bulgarian. Other languages fall back to English.
 
 ## Development
 

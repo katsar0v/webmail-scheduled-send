@@ -9,6 +9,9 @@ namespace ScheduledSend\Transport;
  */
 class SmtpTransport implements TransportInterface
 {
+    /** Seconds without a reply from the server before giving up */
+    private const IO_TIMEOUT = 60;
+
     /** @var string */
     private $host;
 
@@ -25,27 +28,28 @@ class SmtpTransport implements TransportInterface
     {
         Addresses::assertValid($from, $recipients);
 
-        $smtp = new \Net_SMTP($this->host, $this->port, gethostname() ?: 'localhost');
-
-        if (self::isError($smtp->connect(30))) {
-            throw new TransportException("Could not connect to {$this->host}:{$this->port}", true);
-        }
+        $smtp = new \Net_SMTP($this->host, $this->port, gethostname() ?: 'localhost', false, self::IO_TIMEOUT);
 
         try {
-            $this->check($smtp, $smtp->mailFrom($from), 'MAIL FROM');
+            $this->check($smtp, $smtp->connect(30), "Connect to {$this->host}:{$this->port}", false);
+            $this->check($smtp, $smtp->mailFrom($from), 'MAIL FROM', false);
 
             foreach ($recipients as $recipient) {
-                $this->check($smtp, $smtp->rcptTo($recipient), 'RCPT TO');
+                $this->check($smtp, $smtp->rcptTo($recipient), 'RCPT TO', false);
             }
 
-            $this->check($smtp, $smtp->data($message), 'DATA');
+            $this->check($smtp, $smtp->data($message), 'DATA', true);
         }
         finally {
             $smtp->disconnect();
         }
     }
 
-    private function check(\Net_SMTP $smtp, $result, string $step): void
+    /**
+     * @param bool $data Whether this is the DATA step, where the server may accept the message
+     *                   without us learning it
+     */
+    private function check(\Net_SMTP $smtp, $result, string $step, bool $data): void
     {
         if (!self::isError($result)) {
             return;
@@ -54,8 +58,17 @@ class SmtpTransport implements TransportInterface
         [$code, $text] = $smtp->getResponse() + [0, ''];
         $code = (int) $code;
 
-        // 4xx and lost connections are worth retrying, 5xx are final
-        throw new TransportException("$step failed: $code $text", $code < 500);
+        $message = "$step failed: " . ($code > 0 ? "$code $text" : $result->getMessage());
+
+        // An explicit refusal: 4xx is worth retrying, 5xx is final
+        if ($code >= 400 && $code < 600) {
+            throw new TransportException($message, $code < 500);
+        }
+
+        // No usable reply (Net_SMTP leaves 0 or -1) or a lost connection. Before DATA nothing was
+        // accepted. In DATA the server may have queued the message and the final 250 got lost
+        // (or the connection broke after 354), so sending it again could deliver it twice.
+        throw new TransportException($message, !$data, $data);
     }
 
     private static function isError($result): bool

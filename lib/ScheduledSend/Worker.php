@@ -37,7 +37,7 @@ class Worker
     /**
      * @param callable $senderAllowed Re-checks the job's sender right before delivery
      * @param callable $log           Receives one line per event
-     * @param array    $options       batch, lease, max_attempts, retry_delay, retention_days
+     * @param array    $options       batch, lease, max_attempts, retry_delay, retention_days, finish_timeout
      */
     public function __construct(QueueInterface $queue, TransportInterface $transport, StoreInterface $store,
         callable $senderAllowed, callable $log, array $options = [])
@@ -53,6 +53,8 @@ class Worker
             'max_attempts'   => 5,
             'retry_delay'    => 300,
             'retention_days' => 7,
+            // How long to keep retrying the Sent copy and flags after delivery
+            'finish_timeout' => 86400,
         ];
     }
 
@@ -77,8 +79,9 @@ class Worker
         foreach ($this->queue->expiredLeaseIds(QueueInterface::ACCEPTED, $now) as $id) {
             $lease = Queue::datetime($now->modify('+' . $this->options['lease'] . ' seconds'));
 
-            if ($this->queue->transition($id, QueueInterface::ACCEPTED, QueueInterface::ACCEPTED, ['lease_until' => $lease])) {
-                $this->finish($this->queue->find($id));
+            if ($this->queue->transition($id, QueueInterface::ACCEPTED, QueueInterface::ACCEPTED, ['lease_until' => $lease])
+                && $this->finish($this->queue->find($id), $now)
+            ) {
                 $stats['finished']++;
             }
         }
@@ -128,6 +131,17 @@ class Worker
             $this->transport->submit($job['envelope_from'], $recipients, $message);
         }
         catch (TransportException $e) {
+            if ($e->isUncertain()) {
+                // The MTA may have the message: never send it again automatically
+                $this->queue->transition($id, QueueInterface::SUBMITTING, QueueInterface::UNCERTAIN, [
+                    'last_error'  => $e->getMessage(),
+                    'lease_until' => null,
+                ]);
+
+                $this->log("job $id: uncertain: " . $e->getMessage());
+                return 'uncertain';
+            }
+
             if ($e->isTemporary() && $attempts < $this->options['max_attempts']) {
                 $retryAt = $now->modify('+' . ($this->options['retry_delay'] * $attempts) . ' seconds');
 
@@ -153,15 +167,20 @@ class Worker
         $this->log("job $id: accepted by MTA, message-id {$job['message_id']}");
 
         $job['submitted_at'] = Queue::datetime($now);
-        $this->finish($job);
+        $this->finish($job, $now);
 
         return 'sent';
     }
 
     /**
-     * Sent copy and Answered/Forwarded flag. Failures here never cause a resend.
+     * Sent copy and Answered/Forwarded flag. Failures never cause a resend:
+     * the job stays "accepted" with its content, and the missing steps are
+     * retried on later runs. A finished step is recorded right away (by
+     * clearing its column), so it does not run twice.
+     *
+     * @return bool True if the job is done
      */
-    private function finish(array $job): void
+    private function finish(array $job, DateTimeImmutable $now): bool
     {
         $id     = (int) $job['id'];
         $errors = [];
@@ -171,6 +190,7 @@ class Worker
             try {
                 $copy = MessageBuilder::forSentCopy($job['headers'], $job['body'], $date, $job['bcc']);
                 $this->store->saveSent($job['username'], $job['sent_mailbox'], $copy, $job['message_id']);
+                $this->queue->transition($id, QueueInterface::ACCEPTED, QueueInterface::ACCEPTED, ['sent_mailbox' => null]);
             }
             catch (\Exception $e) {
                 $errors[] = 'Sent copy: ' . $e->getMessage();
@@ -180,6 +200,7 @@ class Worker
         if (!empty($job['flag_name']) && !empty($job['flag_mailbox']) && !empty($job['flag_message_id'])) {
             try {
                 $this->store->addFlag($job['username'], $job['flag_mailbox'], $job['flag_message_id'], $job['flag_name']);
+                $this->queue->transition($id, QueueInterface::ACCEPTED, QueueInterface::ACCEPTED, ['flag_name' => null]);
             }
             catch (\Exception $e) {
                 $errors[] = 'Flag: ' . $e->getMessage();
@@ -190,14 +211,38 @@ class Worker
             $this->log("job $id: $error");
         }
 
-        $this->queue->transition($id, QueueInterface::ACCEPTED, QueueInterface::DONE, [
-            'last_error'  => $errors ? implode('; ', $errors) : null,
-            'lease_until' => null,
-            // The content is no longer needed once delivered
-            'headers'     => '',
-            'body'        => '',
-            'bcc'         => null,
+        if (empty($errors)) {
+            $this->queue->transition($id, QueueInterface::ACCEPTED, QueueInterface::DONE, [
+                'last_error'  => null,
+                'lease_until' => null,
+                // The content is no longer needed once delivered and filed
+                'headers'     => '',
+                'body'        => '',
+                'bcc'         => null,
+            ]);
+
+            return true;
+        }
+
+        $submitted = new DateTimeImmutable($job['submitted_at'], new \DateTimeZone('UTC'));
+
+        if ($now->getTimestamp() - $submitted->getTimestamp() >= $this->options['finish_timeout']) {
+            // Give up, but keep the content until the retention period ends, so it can be recovered by hand
+            $this->queue->transition($id, QueueInterface::ACCEPTED, QueueInterface::DONE, [
+                'last_error'  => 'Delivered, but gave up: ' . implode('; ', $errors),
+                'lease_until' => null,
+            ]);
+
+            $this->log("job $id: gave up on Sent copy/flags");
+            return true;
+        }
+
+        $this->queue->transition($id, QueueInterface::ACCEPTED, QueueInterface::ACCEPTED, [
+            'last_error'  => 'Delivered; ' . implode('; ', $errors),
+            'lease_until' => Queue::datetime($now->modify('+' . $this->options['retry_delay'] . ' seconds')),
         ]);
+
+        return false;
     }
 
     private function fail(int $id, string $error): void

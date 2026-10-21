@@ -81,7 +81,7 @@ def compose(page, to, subject, body, bcc=None, url=None):
 
 
 def wait_scheduled(page):
-    page.wait_for_function("() => /geplant|scheduled/i.test(document.querySelector('#messagestack').innerText)", timeout=20000)
+    page.wait_for_function("() => /geplant|scheduled|планиран/i.test(document.querySelector('#messagestack').innerText)", timeout=20000)
     return page.inner_text("#messagestack")
 
 
@@ -127,7 +127,7 @@ with sync_playwright() as p:
     page.click(".ui-dialog-buttonpane button.mainaction")
     notice = wait_scheduled(page)
     page.screenshot(path=str(OUT / "03-after-schedule.png"))
-    results.append(check("confirmation shown", "geplant" in notice.lower() or "scheduled" in notice.lower(), notice))
+    results.append(check("confirmation shown", any(w in notice.lower() for w in ("geplant", "scheduled", "планиран")), notice))
 
     row = sql("SELECT id, status, envelope_from, recipients, subject, LENGTH(body), bcc IS NOT NULL, timezone FROM scheduled_send_queue ORDER BY id DESC LIMIT 1")
     print("DB:", row)
@@ -179,6 +179,24 @@ with sync_playwright() as p:
     worker()
     orig = [m for m in imap_messages("alice@example.test", "INBOX") if f"Original for reply {RUN}" in m["headers"]]
     results.append(check("original answered after send", orig and "\\Answered" in orig[0]["flags"], orig and orig[0]["flags"]))
+
+    # 5b) Editing a scheduled reply keeps the reply context (X-Draft-Info)
+    compose(page, "dave@example.test", f"Re: Original for reply {RUN} (2)", "Zweite Antwort.", url=BASE + f"?_task=mail&_action=compose&_reply_uid={uid}&_mbox=INBOX")
+    schedule(page, local_in(60))
+    job2b = sql("SELECT id FROM scheduled_send_queue ORDER BY id DESC LIMIT 1")
+    page.goto(BASE + "?_task=settings&_action=plugin.scheduled_send")
+    page.click(f"#scheduled-send-list a.restore[data-id='{job2b}']")
+    page.wait_for_timeout(2500)
+    m = imaplib.IMAP4("127.0.0.1", 3143)
+    m.login("alice@example.test", "dev")
+    m.select("Drafts")
+    _, d = m.search(None, "SUBJECT", f'"Original for reply {RUN} (2)"')
+    info = ""
+    for num in d[0].split():
+        _, r = m.fetch(num, "(BODY.PEEK[HEADER.FIELDS (X-DRAFT-INFO)])")
+        info += r[0][1].decode()
+    m.logout()
+    results.append(check("restored reply keeps X-Draft-Info", "type=reply" in info, info.strip()))
 
     # 6) Edit = back to Drafts
     compose(page, "bob@example.test", f"Geplanter Test 3 {RUN} (bearbeiten)", "Entwurf zurück.")

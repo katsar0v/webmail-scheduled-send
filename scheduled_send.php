@@ -22,7 +22,10 @@ use ScheduledSend\Store\StoreInterface;
 
 class scheduled_send extends rcube_plugin
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.1.1';
+
+    /** Seconds after which an interrupted "Edit" (restore to Drafts) may be retried */
+    private const RESTORE_TIMEOUT = 300;
 
     public $task = 'mail|settings';
 
@@ -31,6 +34,9 @@ class scheduled_send extends rcube_plugin
 
     /** @var QueueInterface|null */
     private $queue;
+
+    /** @var bool capture() is registered for this request */
+    private $capturing = false;
 
     /**
      * Shown on Roundcube's "About" page.
@@ -75,26 +81,64 @@ class scheduled_send extends rcube_plugin
     }
 
     /**
-     * Stores the message instead of sending it, if the user picked "Send later".
+     * Handles "Send later" inside the regular send action, where Roundcube has
+     * already validated the form and built the complete MIME message.
      *
-     * Runs inside the regular send action, so Roundcube has already validated the
-     * form and built the complete MIME message, including attachments.
+     * Plugins loaded after this one may still change or reject the message in
+     * their own message_before_send handlers. So this only appends capture()
+     * to the end of the handler list; Roundcube's hook loop also runs handlers
+     * added while the hook is running.
      */
     public function message_before_send($args)
     {
-        $local = rcube_utils::get_input_string('_schedule_at', rcube_utils::INPUT_POST);
+        if (!$this->capturing && $this->is_schedule_request()) {
+            $this->capturing = true;
+            $this->add_hook('message_before_send', [$this, 'capture']);
+        }
 
-        if ($local === '' || !empty($args['abort']) || $this->rc->action != 'send'
-            || !empty($_POST['_draft']) || !empty($_GET['_saveonly'])
-        ) {
+        return $args;
+    }
+
+    private function is_schedule_request(): bool
+    {
+        return $this->rc->action == 'send'
+            && rcube_utils::get_input_string('_schedule_at', rcube_utils::INPUT_POST) !== ''
+            && empty($_POST['_draft'])
+            && empty($_GET['_saveonly']);
+    }
+
+    /**
+     * Last message_before_send handler: stores the final message instead of sending it.
+     */
+    public function capture($args)
+    {
+        // Another plugin rejected the message (or sent it itself): let Roundcube handle that as usual
+        if (!empty($args['abort'])) {
             return $args;
         }
 
         $this->add_texts('localization/');
 
         try {
-            [$job, $sendAt] = $this->build_job($args, $local);
-            $this->queue()->add($job);
+            [$job, $sendAt] = $this->build_job($args, rcube_utils::get_input_string('_schedule_at', rcube_utils::INPUT_POST));
+
+            // A retried request (e.g. after a timeout) must not schedule the same message twice
+            $existing = $this->queue()->findByMessageId($job['user_id'], $job['message_id'], [
+                QueueInterface::PENDING, QueueInterface::SUBMITTING, QueueInterface::ACCEPTED, QueueInterface::DONE,
+            ]);
+
+            if ($existing) {
+                $sendAt = new DateTimeImmutable($existing['send_at'], new DateTimeZone('UTC'));
+            }
+            else {
+                $this->check_quota($job);
+                $this->queue()->add($job);
+            }
+
+            // Keep Roundcube's flood protection (sendmail_delay) working for scheduled messages
+            if ($this->rc->config->get('sendmail_delay')) {
+                $this->rc->user->save_prefs(['last_message_time' => time()]);
+            }
         }
         catch (InvalidInput $e) {
             $this->send_error($this->gettext($e->getMessage()));
@@ -118,10 +162,11 @@ class scheduled_send extends rcube_plugin
     private function build_job(array $args, string $local): array
     {
         /** @var Mail_mime $message */
-        $message = $args['message'];
-        $sendAt  = Schedule::parse(
+        $message  = $args['message'];
+        $timezone = Schedule::zone(rcube_utils::get_input_string('_schedule_tz', rcube_utils::INPUT_POST))->getName();
+        $sendAt   = Schedule::parse(
             $local,
-            rcube_utils::get_input_string('_schedule_tz', rcube_utils::INPUT_POST),
+            $timezone,
             new DateTimeImmutable(),
             (int) $this->rc->config->get('scheduled_send_min_lead', 60),
             (int) $this->rc->config->get('scheduled_send_max_horizon', 31536000)
@@ -170,7 +215,7 @@ class scheduled_send extends rcube_plugin
             'user_id'       => (int) $this->rc->user->ID,
             'username'      => $login,
             'send_at'       => Queue::datetime($sendAt),
-            'timezone'      => rcube_utils::get_input_string('_schedule_tz', rcube_utils::INPUT_POST),
+            'timezone'      => $timezone,
             'envelope_from' => $from,
             'recipients'    => json_encode($recipients),
             'message_id'    => (string) ($headers['Message-ID'] ?? ''),
@@ -183,6 +228,22 @@ class scheduled_send extends rcube_plugin
         ];
 
         return [$job + $this->flag_target($compose), $sendAt];
+    }
+
+    /**
+     * Per-user limits, so one mailbox cannot fill the shared database.
+     */
+    private function check_quota(array $job): void
+    {
+        $usage    = $this->queue()->usage($job['user_id']);
+        $maxCount = (int) $this->rc->config->get('scheduled_send_max_pending', 50);
+        $maxBytes = (int) $this->rc->config->get('scheduled_send_max_pending_bytes', 100 * 1024 * 1024);
+
+        if (($maxCount > 0 && $usage['count'] >= $maxCount)
+            || ($maxBytes > 0 && $usage['bytes'] + $job['size'] > $maxBytes)
+        ) {
+            throw new InvalidInput('quotaexceeded');
+        }
     }
 
     /**
@@ -203,6 +264,10 @@ class scheduled_send extends rcube_plugin
      */
     private function sent_mailbox(): ?string
     {
+        if ($this->rc->config->get('no_save_sent_messages')) {
+            return null;
+        }
+
         $target = isset($_POST['_store_target'])
             ? rcube_utils::get_input_string('_store_target', rcube_utils::INPUT_POST, true)
             : $this->rc->config->get('sent_mbox');
@@ -360,7 +425,7 @@ class scheduled_send extends rcube_plugin
         $status     = $job['status'];
         $actions    = '';
 
-        if ($status === QueueInterface::PENDING || $status === QueueInterface::FAILED) {
+        if (self::restorable($job)) {
             $actions .= html::a([
                     'href' => '#', 'class' => 'btn btn-secondary btn-sm restore', 'data-id' => $id,
                     'title' => $this->gettext('restorehint'),
@@ -401,6 +466,24 @@ class scheduled_send extends rcube_plugin
     /**
      * Cancels a pending (or failed) message and puts it back into Drafts for editing.
      */
+    /**
+     * Pending and failed messages can be moved back to Drafts. So can a restore
+     * that was interrupted (e.g. the PHP process died) and has been stuck for
+     * a few minutes.
+     */
+    private static function restorable(array $job): bool
+    {
+        if (in_array($job['status'], [QueueInterface::PENDING, QueueInterface::FAILED], true)) {
+            return true;
+        }
+
+        return $job['status'] === QueueInterface::RESTORING
+            && strtotime($job['updated_at'] . ' UTC') < time() - self::RESTORE_TIMEOUT;
+    }
+
+    /**
+     * Cancels a pending (or failed) message and puts it back into Drafts for editing.
+     */
     public function action_restore()
     {
         $id     = (int) rcube_utils::get_input_string('_id', rcube_utils::INPUT_POST);
@@ -409,28 +492,69 @@ class scheduled_send extends rcube_plugin
         $job    = $queue->find($id, $userId);
         $drafts = $this->rc->config->get('drafts_mbox');
 
-        if (!$job || !$drafts || !in_array($job['status'], [QueueInterface::PENDING, QueueInterface::FAILED], true)
+        if (!$job || !$drafts || !self::restorable($job)
             || !$queue->transition($id, $job['status'], QueueInterface::RESTORING, [], $userId)
         ) {
             $this->respond(false, null, 'cannotchange');
         }
 
-        $draft   = MessageBuilder::forSentCopy($job['headers'], $job['body'],
-            MessageBuilder::date(new DateTimeImmutable(), $job['timezone']), $job['bcc']);
         $storage = $this->rc->get_storage();
 
         // Like rcmail_sendmail::save_message(), create the folder if it is missing
-        if ((!$storage->folder_exists($drafts) && !$storage->create_folder($drafts, true))
-            || !$storage->save_message($drafts, $draft, '', false, ['SEEN'])
-        ) {
-            $queue->transition($id, QueueInterface::RESTORING, $job['status'], [], $userId);
-            $this->respond(false, null, 'restorefailed');
+        if (!$storage->folder_exists($drafts) && !$storage->create_folder($drafts, true)) {
+            $this->restore_failed($job);
+        }
+
+        // An interrupted earlier attempt may already have saved the draft
+        $existing = $storage->search_once($drafts, 'HEADER MESSAGE-ID ' . rcube_imap_generic::escape($job['message_id']));
+
+        if ($existing->is_empty()) {
+            $draft = MessageBuilder::forDraft($job['headers'], $job['body'],
+                MessageBuilder::date(new DateTimeImmutable(), $job['timezone']), $job['bcc'], $this->draft_info($job));
+
+            if (!$storage->save_message($drafts, $draft, '', false, ['SEEN'])) {
+                $this->restore_failed($job);
+            }
         }
 
         $queue->transition($id, QueueInterface::RESTORING, QueueInterface::CANCELLED,
             ['headers' => '', 'body' => '', 'bcc' => null], $userId);
 
         $this->respond(true, 'restored', null);
+    }
+
+    private function restore_failed(array $job): void
+    {
+        // Back to where it was; a stuck restore stays "restoring" and can be retried later
+        if ($job['status'] !== QueueInterface::RESTORING) {
+            $this->queue()->transition((int) $job['id'], QueueInterface::RESTORING, $job['status'], [], (int) $job['user_id']);
+        }
+
+        $this->respond(false, null, 'restorefailed');
+    }
+
+    /**
+     * Roundcube's X-Draft-Info for a scheduled reply or forward, so that sending
+     * the edited draft still marks the original message as answered/forwarded.
+     */
+    private function draft_info(array $job): ?string
+    {
+        if (empty($job['flag_name']) || empty($job['flag_mailbox']) || empty($job['flag_message_id'])) {
+            return null;
+        }
+
+        $found = $this->rc->get_storage()->search_once($job['flag_mailbox'],
+            'HEADER MESSAGE-ID ' . rcube_imap_generic::escape($job['flag_message_id']));
+
+        if ($found->is_empty()) {
+            return null;
+        }
+
+        return rcmail_sendmail::draftinfo_encode([
+            'type'   => $job['flag_name'] === StoreInterface::ANSWERED ? 'reply' : 'forward',
+            'uid'    => $found->max(),
+            'folder' => $job['flag_mailbox'],
+        ]);
     }
 
     private function respond(bool $success, ?string $ok, ?string $error): void

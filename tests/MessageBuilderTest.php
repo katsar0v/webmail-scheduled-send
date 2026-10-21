@@ -26,6 +26,15 @@ class MessageBuilderTest extends TestCase
         $this->assertStringContainsString("Message-ID: <1@example.test>\r\nBcc: carol@example.test\r\n\r\nBody\r\n", $message);
     }
 
+    public function testDraftCarriesDraftInfo(): void
+    {
+        $message = MessageBuilder::forDraft(self::HEADERS, "Body\r\n", 'D', 'carol@example.test', 'type=reply; uid=7; folder=B::SU5CT1g=');
+
+        $this->assertStringStartsWith("X-Draft-Info: type=reply; uid=7; folder=B::SU5CT1g=\r\nDate: D\r\n", $message);
+        $this->assertStringContainsString("Bcc: carol@example.test\r\n\r\nBody\r\n", $message);
+        $this->assertStringStartsWith('Date: D', MessageBuilder::forDraft(self::HEADERS, '', 'D', null, null));
+    }
+
     public function testKeepsUnixLineEndings(): void
     {
         $message = MessageBuilder::forSentCopy("From: a@example.test\nSubject: x\n", "Body\n", 'D', 'b@example.test');

@@ -41,6 +41,26 @@ class InMemoryQueue implements QueueInterface
         }));
     }
 
+    public function usage(int $userId): array
+    {
+        $jobs = array_filter($this->jobs, function ($job) use ($userId) {
+            return $job['user_id'] == $userId && in_array($job['status'], self::HOLDING_CONTENT, true);
+        });
+
+        return ['count' => count($jobs), 'bytes' => array_sum(array_column($jobs, 'size'))];
+    }
+
+    public function findByMessageId(int $userId, string $messageId, array $statuses): ?array
+    {
+        foreach (array_reverse($this->jobs) as $job) {
+            if ($job['user_id'] == $userId && $job['message_id'] === $messageId && in_array($job['status'], $statuses, true)) {
+                return $job;
+            }
+        }
+
+        return null;
+    }
+
     public function transition(int $id, string $from, string $to, array $set = [], ?int $userId = null): bool
     {
         $job = $this->find($id, $userId);
