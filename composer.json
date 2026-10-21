@@ -1,0 +1,37 @@
+{
+    "name": "katsar0v/scheduled_send",
+    "type": "roundcube-plugin",
+    "description": "Send later (scheduled send) for Roundcube webmail on Plesk. No stored passwords, no web-reachable worker.",
+    "license": "GPL-3.0-or-later",
+    "homepage": "https://github.com/katsar0v/webmail-scheduled-send",
+    "require": {
+        "php": ">=7.4",
+        "roundcube/plugin-installer": ">=0.1.3"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "ScheduledSend\\": "lib/ScheduledSend/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ScheduledSend\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "roundcube": {
+            "min-version": "1.6.0"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "roundcube/plugin-installer": true
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    }
+}

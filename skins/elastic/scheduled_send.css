@@ -1,0 +1,48 @@
+/* Compose: "Send later" button next to "Send" */
+.formbuttons .btn.scheduled-send {
+    margin-left: .5rem;
+}
+
+.scheduled-send-dialog .scheduled-send-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    margin-bottom: 1rem;
+}
+
+.scheduled-send-dialog label {
+    display: block;
+    margin-bottom: .25rem;
+}
+
+.scheduled-send-dialog .hint {
+    margin: .5rem 0 0;
+    font-size: .9em;
+    opacity: .75;
+}
+
+/* Settings: menu entry icon (Font Awesome clock) */
+#settings-menu li.scheduled-send a:before {
+    content: "\f017";
+}
+
+/* Settings: list of scheduled messages */
+.scheduled-send table td.actions {
+    white-space: nowrap;
+    text-align: right;
+}
+
+.scheduled-send table a.btn {
+    margin-left: .5rem;
+}
+
+.scheduled-send table .error-detail {
+    display: block;
+    font-size: .85em;
+    opacity: .75;
+}
+
+.scheduled-send tr.status-done,
+.scheduled-send tr.status-cancelled {
+    opacity: .6;
+}

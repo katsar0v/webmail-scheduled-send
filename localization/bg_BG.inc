@@ -1,0 +1,45 @@
+<?php
+
+$labels = [];
+$labels['sendlater'] = 'Изпрати по-късно';
+$labels['sendlatertitle'] = 'Планиране на изпращането';
+$labels['schedule'] = 'Планирай';
+$labels['dateandtime'] = 'Дата и час';
+$labels['timezone'] = 'Часова зона: $tz';
+$labels['tomorrowmorning'] = 'Утре сутрин';
+$labels['tomorrowafternoon'] = 'Утре следобед';
+$labels['mondaymorning'] = 'Понеделник сутрин';
+$labels['scheduledmessages'] = 'Планирани писма';
+$labels['noscheduled'] = 'Няма планирани писма.';
+$labels['sendat'] = 'Час на изпращане';
+$labels['recipients'] = 'Получатели';
+$labels['subject'] = 'Тема';
+$labels['status'] = 'Статус';
+$labels['restore'] = 'Редактирай';
+$labels['restorehint'] = 'Отмяна на изпращането и връщане на писмото в „Чернови“';
+$labels['cancel'] = 'Отмени';
+$labels['status_pending'] = 'Планирано';
+$labels['status_submitting'] = 'Изпраща се…';
+$labels['status_accepted'] = 'Изпратено';
+$labels['status_done'] = 'Изпратено';
+$labels['status_restoring'] = 'Връща се в „Чернови“…';
+$labels['status_cancelled'] = 'Отменено';
+$labels['status_failed'] = 'Неуспешно';
+$labels['status_uncertain'] = 'Неясно (проверете „Изпратени“ или се обърнете към администратора)';
+
+$messages = [];
+$messages['scheduledfor'] = 'Писмото е планирано за $date.';
+$messages['schedulefailed'] = 'Писмото не можа да бъде планирано.';
+$messages['invaliddate'] = 'Моля, въведете валидна дата и час.';
+$messages['invalidtimezone'] = 'Непозната часова зона.';
+$messages['dateinpast'] = 'Часът на изпращане трябва да е в бъдещето.';
+$messages['datetoofar'] = 'Часът на изпращане е твърде далеч в бъдещето.';
+$messages['sendernotallowed'] = 'Планираните писма могат да се изпращат само от собствения ви адрес.';
+$messages['norecipients'] = 'Моля, добавете поне един получател.';
+$messages['messagetoolarge'] = 'Писмото е твърде голямо, за да бъде планирано.';
+$messages['quotaexceeded'] = 'Имате твърде много планирани писма. Изчакайте някои да бъдат изпратени или отменете някои.';
+$messages['cancelled'] = 'Планираното писмо е отменено.';
+$messages['restored'] = 'Писмото е върнато в „Чернови“.';
+$messages['restorefailed'] = 'Писмото не можа да бъде запазено в „Чернови“.';
+$messages['cannotchange'] = 'Това писмо вече не може да бъде променено.';
+$messages['confirmcancel'] = 'Да се отмени ли това планирано писмо? То ще бъде изтрито.';

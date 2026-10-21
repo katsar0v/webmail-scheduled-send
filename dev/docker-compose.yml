@@ -1,0 +1,78 @@
+# Local development stack for the scheduled_send Roundcube plugin.
+#
+#   roundcube  Roundcube 1.6.19 (Apache), plugin mounted read-only from the repo root
+#   db         MariaDB 10.11 (production uses MySQL)
+#   mail       GreenMail: plain IMAP + SMTP, auth disabled, mailboxes auto-created
+#
+# Use ./dev.sh instead of calling docker compose directly (see README.md).
+
+name: scheduled-send-dev
+
+services:
+  roundcube:
+    image: roundcube/roundcubemail:1.6.19-apache
+    depends_on:
+      db:
+        condition: service_healthy
+      mail:
+        condition: service_started
+    ports:
+      # Bound to loopback only: the dev stack accepts any password.
+      - "127.0.0.1:8095:80"
+    environment:
+      ROUNDCUBEMAIL_DB_TYPE: mysql
+      ROUNDCUBEMAIL_DB_HOST: db
+      ROUNDCUBEMAIL_DB_PORT: "3306"
+      ROUNDCUBEMAIL_DB_NAME: roundcubemail
+      ROUNDCUBEMAIL_DB_USER: roundcube
+      ROUNDCUBEMAIL_DB_PASSWORD: roundcube
+      # Plain IMAP/SMTP to GreenMail (no tls:// or ssl:// prefix, so no TLS).
+      ROUNDCUBEMAIL_DEFAULT_HOST: mail
+      ROUNDCUBEMAIL_DEFAULT_PORT: "3143"
+      ROUNDCUBEMAIL_SMTP_SERVER: mail
+      ROUNDCUBEMAIL_SMTP_PORT: "3025"
+      # Override with e.g. DEV_PLUGINS=managesieve ./dev.sh up to run the stack
+      # without the plugin (useful while the plugin code is incomplete).
+      ROUNDCUBEMAIL_PLUGINS: ${DEV_PLUGINS:-scheduled_send,managesieve}
+    volumes:
+      # The repo root is the plugin.
+      - ..:/var/www/html/plugins/scheduled_send:ro
+      # The image appends include('/var/roundcube/config/*.php') to its generated
+      # config on every start, so every *.php file in here is merged into $config.
+      - ./config:/var/roundcube/config:ro
+
+  db:
+    image: mariadb:10.11.19
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: roundcubemail
+      MARIADB_USER: roundcube
+      MARIADB_PASSWORD: roundcube
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  mail:
+    image: greenmail/standalone:2.1.14
+    environment:
+      # auth.disabled: any user/password logs in, mailboxes are created on first
+      # login or first delivery. test.all: SMTP 3025, IMAP 3143, POP3 3110, plus
+      # the TLS variants. Hostname 0.0.0.0 so other containers can connect.
+      GREENMAIL_OPTS: >-
+        -Dgreenmail.setup.test.all
+        -Dgreenmail.hostname=0.0.0.0
+        -Dgreenmail.auth.disabled
+        -Dgreenmail.verbose
+    ports:
+      # Optional, for debugging from the host (imaplib, swaks, mutt, ...).
+      - "127.0.0.1:3143:3143"
+      - "127.0.0.1:3025:3025"
+
+volumes:
+  db-data:
