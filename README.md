@@ -34,7 +34,7 @@ This plugin does neither:
 Put the plugin into `<roundcube>/plugins/scheduled_send/`. On Plesk that is `/usr/share/psa-roundcube/plugins/scheduled_send/`. The directory name must be `scheduled_send`.
 
 ```sh
-curl -L https://github.com/katsar0v/webmail-scheduled-send/archive/refs/tags/v0.1.0.tar.gz \
+curl -L https://github.com/katsar0v/webmail-scheduled-send/archive/refs/tags/v0.1.1.tar.gz \
   | tar xz --strip-components=1 -C /usr/share/psa-roundcube/plugins/scheduled_send
 ```
 
