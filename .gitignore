@@ -9,3 +9,5 @@
 # Local configuration
 config.inc.php
 .env
+/composer.lock
+/.phpunit.result.cache

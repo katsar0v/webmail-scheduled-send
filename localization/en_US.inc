@@ -1,0 +1,44 @@
+<?php
+
+$labels = [];
+$labels['sendlater'] = 'Send later';
+$labels['sendlatertitle'] = 'Schedule send';
+$labels['schedule'] = 'Schedule';
+$labels['dateandtime'] = 'Date and time';
+$labels['timezone'] = 'Time zone: $tz';
+$labels['tomorrowmorning'] = 'Tomorrow morning';
+$labels['tomorrowafternoon'] = 'Tomorrow afternoon';
+$labels['mondaymorning'] = 'Monday morning';
+$labels['scheduledmessages'] = 'Scheduled messages';
+$labels['noscheduled'] = 'There are no scheduled messages.';
+$labels['sendat'] = 'Send time';
+$labels['recipients'] = 'Recipients';
+$labels['subject'] = 'Subject';
+$labels['status'] = 'Status';
+$labels['restore'] = 'Edit';
+$labels['restorehint'] = 'Cancel sending and move the message back to Drafts';
+$labels['cancel'] = 'Cancel';
+$labels['status_pending'] = 'Scheduled';
+$labels['status_submitting'] = 'Sending…';
+$labels['status_accepted'] = 'Sent';
+$labels['status_done'] = 'Sent';
+$labels['status_restoring'] = 'Moving to Drafts…';
+$labels['status_cancelled'] = 'Cancelled';
+$labels['status_failed'] = 'Failed';
+$labels['status_uncertain'] = 'Unknown (check Sent or ask the administrator)';
+
+$messages = [];
+$messages['scheduledfor'] = 'Message scheduled for $date.';
+$messages['schedulefailed'] = 'The message could not be scheduled.';
+$messages['invaliddate'] = 'Please enter a valid date and time.';
+$messages['invalidtimezone'] = 'Unknown time zone.';
+$messages['dateinpast'] = 'The send time must be in the future.';
+$messages['datetoofar'] = 'The send time is too far in the future.';
+$messages['sendernotallowed'] = 'Scheduled messages can only be sent from your own address.';
+$messages['norecipients'] = 'Please add at least one recipient.';
+$messages['messagetoolarge'] = 'The message is too large to be scheduled.';
+$messages['cancelled'] = 'Scheduled message cancelled.';
+$messages['restored'] = 'The message was moved back to Drafts.';
+$messages['restorefailed'] = 'The message could not be saved to Drafts.';
+$messages['cannotchange'] = 'This message can no longer be changed.';
+$messages['confirmcancel'] = 'Cancel this scheduled message? It will be deleted.';

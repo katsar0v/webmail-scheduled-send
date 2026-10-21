@@ -1,0 +1,44 @@
+<?php
+
+$labels = [];
+$labels['sendlater'] = 'Später senden';
+$labels['sendlatertitle'] = 'Senden planen';
+$labels['schedule'] = 'Planen';
+$labels['dateandtime'] = 'Datum und Uhrzeit';
+$labels['timezone'] = 'Zeitzone: $tz';
+$labels['tomorrowmorning'] = 'Morgen früh';
+$labels['tomorrowafternoon'] = 'Morgen Nachmittag';
+$labels['mondaymorning'] = 'Montag früh';
+$labels['scheduledmessages'] = 'Geplante E-Mails';
+$labels['noscheduled'] = 'Es sind keine E-Mails geplant.';
+$labels['sendat'] = 'Sendezeit';
+$labels['recipients'] = 'Empfänger';
+$labels['subject'] = 'Betreff';
+$labels['status'] = 'Status';
+$labels['restore'] = 'Bearbeiten';
+$labels['restorehint'] = 'Versand abbrechen und die E-Mail zurück in die Entwürfe legen';
+$labels['cancel'] = 'Abbrechen';
+$labels['status_pending'] = 'Geplant';
+$labels['status_submitting'] = 'Wird gesendet …';
+$labels['status_accepted'] = 'Gesendet';
+$labels['status_done'] = 'Gesendet';
+$labels['status_restoring'] = 'Wird in die Entwürfe gelegt …';
+$labels['status_cancelled'] = 'Abgebrochen';
+$labels['status_failed'] = 'Fehlgeschlagen';
+$labels['status_uncertain'] = 'Unklar (bitte „Gesendet“ prüfen oder den Administrator fragen)';
+
+$messages = [];
+$messages['scheduledfor'] = 'E-Mail geplant für $date.';
+$messages['schedulefailed'] = 'Die E-Mail konnte nicht geplant werden.';
+$messages['invaliddate'] = 'Bitte ein gültiges Datum und eine gültige Uhrzeit eingeben.';
+$messages['invalidtimezone'] = 'Unbekannte Zeitzone.';
+$messages['dateinpast'] = 'Die Sendezeit muss in der Zukunft liegen.';
+$messages['datetoofar'] = 'Die Sendezeit liegt zu weit in der Zukunft.';
+$messages['sendernotallowed'] = 'Geplante E-Mails können nur von der eigenen Adresse gesendet werden.';
+$messages['norecipients'] = 'Bitte mindestens einen Empfänger angeben.';
+$messages['messagetoolarge'] = 'Die E-Mail ist zu groß, um sie zu planen.';
+$messages['cancelled'] = 'Geplante E-Mail abgebrochen.';
+$messages['restored'] = 'Die E-Mail liegt wieder in den Entwürfen.';
+$messages['restorefailed'] = 'Die E-Mail konnte nicht in den Entwürfen gespeichert werden.';
+$messages['cannotchange'] = 'Diese E-Mail kann nicht mehr geändert werden.';
+$messages['confirmcancel'] = 'Diese geplante E-Mail abbrechen? Sie wird gelöscht.';

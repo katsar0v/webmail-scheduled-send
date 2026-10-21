@@ -1,0 +1,58 @@
+<?php
+
+// Scheduled send ("send later") for Roundcube.
+// Copy this file to config.inc.php in the plugin directory and adjust it.
+
+// How the worker hands messages to the MTA:
+//   'sendmail' - local sendmail binary (recommended on Plesk: it DKIM-signs the message)
+//   'smtp'     - unauthenticated SMTP, for development servers only
+$config['scheduled_send_transport'] = 'sendmail';
+
+// Program and fixed arguments for 'sendmail'. Executed without a shell.
+// The worker appends: -i -f <sender> -- <recipients...>
+// With Plesk outgoing mail limits switched on, sendmail must run as root,
+// popuser or a subscription's system user, e.g.:
+//   ['/usr/bin/sudo', '-n', '-u', 'popuser', '/usr/sbin/sendmail']
+$config['scheduled_send_sendmail_command'] = ['/usr/sbin/sendmail'];
+
+// Host and port for 'smtp'
+$config['scheduled_send_smtp_host'] = 'localhost:25';
+
+// Where the worker files the Sent copy and sets the Answered/Forwarded flag:
+//   'doveadm' - Dovecot's doveadm, no user password needed (recommended)
+//   'imap'    - IMAP with a fixed password, for development servers that accept any password
+//   'none'    - no Sent copy, no flags
+$config['scheduled_send_sent_store'] = 'doveadm';
+
+// Program and fixed arguments for 'doveadm'. Must run as a user that can open
+// Dovecot's auth-userdb socket (on Plesk: popuser), e.g.:
+//   ['/usr/bin/sudo', '-n', '-u', 'popuser', '/usr/bin/doveadm']
+$config['scheduled_send_doveadm_command'] = ['/usr/bin/doveadm'];
+
+// Host, port and password for 'imap'
+$config['scheduled_send_imap_host'] = 'localhost:143';
+$config['scheduled_send_imap_password'] = '';
+
+// Which sender addresses may be used for scheduled messages:
+//   'login'      - only the address the user logged in with (safest)
+//   'identities' - any of the user's identities; only safe if users cannot
+//                  freely edit identity addresses (see identities_level)
+$config['scheduled_send_sender_policy'] = 'login';
+
+// Earliest and latest allowed send time, in seconds from now
+$config['scheduled_send_min_lead'] = 60;
+$config['scheduled_send_max_horizon'] = 365 * 24 * 3600;
+
+// Largest message that can be scheduled, in bytes. The whole message is stored
+// in the database, so keep this below MySQL's max_allowed_packet.
+$config['scheduled_send_max_size'] = 10 * 1024 * 1024;
+
+// Retries after temporary delivery errors, and the base delay between them (seconds)
+$config['scheduled_send_max_attempts'] = 5;
+$config['scheduled_send_retry_delay'] = 300;
+
+// Days to keep finished, cancelled and failed jobs before they are deleted
+$config['scheduled_send_retention_days'] = 7;
+
+// Lock file that keeps two workers from running at the same time
+$config['scheduled_send_lock_file'] = null; // default: <temp_dir>/scheduled_send.lock
